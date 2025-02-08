@@ -1,99 +1,83 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Clock, CheckCircle, BookmarkPlus, Activity, PlusCircle } from 'lucide-react';
+import { 
+  Clock, 
+  CheckCircle, 
+  BookmarkPlus, 
+  Activity, 
+  PlusCircle,
+  Gift,
+  Users,
+  MessageCircle,
+  TrendingUp,
+  MapPin,
+  Calendar,
+  AlertCircle
+} from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useStore } from '../lib/store';
 
 interface DashboardItem {
   id: string;
   title: string;
   status: 'PENDING' | 'CLAIMED' | 'COMPLETED';
   created_at: string;
+  category: string;
+  description: string;
+  location: string;
 }
 
-interface Profile {
-  role: 'DONOR' | 'BENEFICIARY' | 'MANAGER';
+interface DashboardStats {
+  totalDonations: number;
+  activeDonations: number;
+  completedDonations: number;
+  totalBeneficiaries: number;
 }
 
 export default function Dashboard() {
   const [items, setItems] = useState<DashboardItem[]>([]);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalDonations: 0,
+    activeDonations: 0,
+    completedDonations: 0,
+    totalBeneficiaries: 0
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const user = useStore((state) => state.user);
 
   useEffect(() => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
     loadDashboardData();
-  }, []);
+  }, [user, navigate]);
 
   async function loadDashboardData() {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        navigate('/login');
-        return;
-      }
+      setLoading(true);
 
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
+      // Fetch announcements
+      const { data: announcements, error: announcementsError } = await supabase
+        .from('announcements')
+        .select('*')
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false });
 
-      if (profileError) {
-        throw profileError;
-      }
+      if (announcementsError) throw announcementsError;
 
-      if (!profileData) {
-        const { data: newProfile, error: createError } = await supabase
-          .from('profiles')
-          .insert([{
-            id: user.id,
-            username: email?.split('@')[0] || '',
-            full_name: user.user_metadata.full_name || '',
-            role: user.user_metadata.role || 'DONOR',
-            biography: '',
-            city: '',
-            visibility: true,
-            avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(user.user_metadata.full_name || '')}&background=random`
-          }])
-          .select('role')
-          .single();
+      // Calculate stats
+      const stats = {
+        totalDonations: announcements?.length || 0,
+        activeDonations: announcements?.filter(a => a.status === 'PENDING').length || 0,
+        completedDonations: announcements?.filter(a => a.status === 'COMPLETED').length || 0,
+        totalBeneficiaries: new Set(announcements?.map(a => a.claimed_by)).size || 0
+      };
 
-        if (createError) throw createError;
-        setProfile(newProfile);
-      } else {
-        setProfile(profileData);
-      }
-
-      if (profileData?.role === 'DONOR' || (!profileData && user.user_metadata.role === 'DONOR')) {
-        const { data, error: itemsError } = await supabase
-          .from('announcements')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (itemsError) throw itemsError;
-        setItems(data || []);
-      } else if (profileData?.role === 'BENEFICIARY' || (!profileData && user.user_metadata.role === 'BENEFICIARY')) {
-        const { data, error: wishlistError } = await supabase
-          .from('wishlists')
-          .select('announcements(*)')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (wishlistError) throw wishlistError;
-        setItems(data?.map(item => item.announcements) || []);
-      } else if (profileData?.role === 'MANAGER') {
-        const { data, error: logsError } = await supabase
-          .from('activity_logs')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(50);
-
-        if (logsError) throw logsError;
-        setItems(data || []);
-      }
+      setItems(announcements || []);
+      setStats(stats);
     } catch (error) {
       console.error('Error loading dashboard:', error);
       setError(error instanceof Error ? error.message : 'Failed to load dashboard data');
@@ -104,21 +88,24 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-lg">
-          <h2 className="text-xl font-semibold text-red-600 mb-4">Error Loading Dashboard</h2>
-          <p className="text-gray-600">{error}</p>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg">
+          <div className="flex items-center space-x-3 text-red-600 dark:text-red-400 mb-4">
+            <AlertCircle className="w-6 h-6" />
+            <h2 className="text-xl font-semibold">Error Loading Dashboard</h2>
+          </div>
+          <p className="text-gray-600 dark:text-gray-300">{error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="mt-4 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
           >
             Retry
           </button>
@@ -128,136 +115,169 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
+        {/* Header */}
         <div className="md:flex md:items-center md:justify-between mb-8">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              {profile?.role === 'DONOR' && 'Track your donations and their status'}
-              {profile?.role === 'BENEFICIARY' && 'View your saved items and requests'}
-              {profile?.role === 'MANAGER' && 'Monitor user activity and moderate content'}
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Welcome back! Here's an overview of your donations and impact.
             </p>
           </div>
-          {(profile?.role === 'DONOR' || profile?.role === 'BENEFICIARY') && (
-            <Link
-              to="/create-item"
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 transform hover:-translate-y-0.5 shadow-md hover:shadow-lg"
-            >
-              <PlusCircle className="w-5 h-5 mr-2" />
-              Create New Item
-            </Link>
-          )}
+          <Link
+            to="/create-item"
+            className="mt-4 md:mt-0 inline-flex items-center px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors duration-200 transform hover:-translate-y-0.5 shadow-md hover:shadow-lg"
+          >
+            <PlusCircle className="w-5 h-5 mr-2" />
+            Create New Item
+          </Link>
         </div>
 
-        {/* Dashboard Content */}
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          {profile?.role === 'DONOR' && (
-            <div className="divide-y divide-gray-200">
-              {items.length === 0 ? (
-                <div className="p-6 text-center">
-                  <div className="text-gray-500 mb-4">No donations yet.</div>
-                  <Link
-                    to="/create-item"
-                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
-                  >
-                    <PlusCircle className="w-5 h-5 mr-2" />
-                    Create Your First Donation
-                  </Link>
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+          {[
+            {
+              title: 'Total Donations',
+              value: stats.totalDonations,
+              icon: Gift,
+              color: 'text-blue-600 dark:text-blue-400',
+              bg: 'bg-blue-100 dark:bg-blue-900/20'
+            },
+            {
+              title: 'Active Donations',
+              value: stats.activeDonations,
+              icon: Activity,
+              color: 'text-green-600 dark:text-green-400',
+              bg: 'bg-green-100 dark:bg-green-900/20'
+            },
+            {
+              title: 'Completed Donations',
+              value: stats.completedDonations,
+              icon: CheckCircle,
+              color: 'text-purple-600 dark:text-purple-400',
+              bg: 'bg-purple-100 dark:bg-purple-900/20'
+            },
+            {
+              title: 'Total Beneficiaries',
+              value: stats.totalBeneficiaries,
+              icon: Users,
+              color: 'text-orange-600 dark:text-orange-400',
+              bg: 'bg-orange-100 dark:bg-orange-900/20'
+            }
+          ].map((stat) => (
+            <div
+              key={stat.title}
+              className="bg-white dark:bg-gray-800 overflow-hidden rounded-lg shadow"
+            >
+              <div className="p-5">
+                <div className="flex items-center">
+                  <div className={`flex-shrink-0 rounded-md p-3 ${stat.bg}`}>
+                    <stat.icon className={`w-6 h-6 ${stat.color}`} />
+                  </div>
+                  <div className="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                        {stat.title}
+                      </dt>
+                      <dd className="flex items-baseline">
+                        <div className="text-2xl font-semibold text-gray-900 dark:text-white">
+                          {stat.value}
+                        </div>
+                      </dd>
+                    </dl>
+                  </div>
                 </div>
-              ) : (
-                items.map((item) => (
-                  <div key={item.id} className="p-6 flex items-center justify-between">
-                    <div className="flex items-center">
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Recent Items */}
+        <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+          <div className="px-4 py-5 sm:px-6 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+              Recent Items
+            </h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              A list of your recent donations and their current status.
+            </p>
+          </div>
+
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            {items.length === 0 ? (
+              <div className="p-6 text-center">
+                <div className="text-gray-500 dark:text-gray-400 mb-4">No items yet.</div>
+                <Link
+                  to="/create-item"
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors duration-200"
+                >
+                  <PlusCircle className="w-5 h-5 mr-2" />
+                  Create Your First Item
+                </Link>
+              </div>
+            ) : (
+              items.map((item) => (
+                <div key={item.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
                       <div className={`
-                        rounded-full p-2 mr-4
-                        ${item.status === 'PENDING' ? 'bg-yellow-100 text-yellow-600' : ''}
-                        ${item.status === 'CLAIMED' ? 'bg-blue-100 text-blue-600' : ''}
-                        ${item.status === 'COMPLETED' ? 'bg-green-100 text-green-600' : ''}
+                        rounded-full p-2
+                        ${item.status === 'PENDING' ? 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400' : ''}
+                        ${item.status === 'CLAIMED' ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : ''}
+                        ${item.status === 'COMPLETED' ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400' : ''}
                       `}>
                         {item.status === 'PENDING' && <Clock className="w-5 h-5" />}
-                        {item.status === 'CLAIMED' && <CheckCircle className="w-5 h-5" />}
+                        {item.status === 'CLAIMED' && <BookmarkPlus className="w-5 h-5" />}
                         {item.status === 'COMPLETED' && <CheckCircle className="w-5 h-5" />}
                       </div>
                       <div>
-                        <h3 className="text-lg font-medium text-gray-900">{item.title}</h3>
-                        <p className="text-sm text-gray-500">
-                          Created on {new Date(item.created_at).toLocaleDateString()}
-                        </p>
+                        <h4 className="text-lg font-medium text-gray-900 dark:text-white">
+                          {item.title}
+                        </h4>
+                        <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
+                          <span className="flex items-center">
+                            <MapPin className="w-4 h-4 mr-1" />
+                            {item.location}
+                          </span>
+                          <span className="flex items-center">
+                            <Calendar className="w-4 h-4 mr-1" />
+                            {new Date(item.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <span className={`
                       px-3 py-1 rounded-full text-sm font-medium
-                      ${item.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' : ''}
-                      ${item.status === 'CLAIMED' ? 'bg-blue-100 text-blue-800' : ''}
-                      ${item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : ''}
+                      ${item.status === 'PENDING' ? 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200' : ''}
+                      ${item.status === 'CLAIMED' ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200' : ''}
+                      ${item.status === 'COMPLETED' ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-200' : ''}
                     `}>
                       {item.status}
                     </span>
                   </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {profile?.role === 'BENEFICIARY' && (
-            <div className="divide-y divide-gray-200">
-              {items.length === 0 ? (
-                <div className="p-6 text-center">
-                  <div className="text-gray-500 mb-4">No saved items yet.</div>
-                  <Link
-                    to="/create-item"
-                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
-                  >
-                    <PlusCircle className="w-5 h-5 mr-2" />
-                    Create Your First Request
-                  </Link>
-                </div>
-              ) : (
-                items.map((item) => (
-                  <div key={item.id} className="p-6 flex items-center justify-between">
-                    <div className="flex items-center">
-                      <BookmarkPlus className="w-5 h-5 text-blue-600 mr-4" />
-                      <div>
-                        <h3 className="text-lg font-medium text-gray-900">{item.title}</h3>
-                        <p className="text-sm text-gray-500">
-                          Saved on {new Date(item.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                    {item.description}
+                  </p>
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="flex items-center space-x-4 text-sm">
+                      <span className="text-gray-500 dark:text-gray-400">
+                        Category: {item.category}
+                      </span>
                     </div>
-                    <button className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                      Contact Donor
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {profile?.role === 'MANAGER' && (
-            <div className="divide-y divide-gray-200">
-              {items.length === 0 ? (
-                <div className="p-6 text-center text-gray-500">
-                  No activity logs to display.
-                </div>
-              ) : (
-                items.map((item) => (
-                  <div key={item.id} className="p-6 flex items-center">
-                    <Activity className="w-5 h-5 text-gray-400 mr-4" />
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900">{item.action}</h3>
-                      <p className="text-sm text-gray-500">
-                        {new Date(item.created_at).toLocaleString()}
-                      </p>
-                      <pre className="mt-2 text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                        {JSON.stringify(item.details, null, 2)}
-                      </pre>
+                    <div className="flex items-center space-x-2">
+                      <button className="px-3 py-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300">
+                        View Details
+                      </button>
+                      <button className="px-3 py-1 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+                        Edit
+                      </button>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
-          )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>
