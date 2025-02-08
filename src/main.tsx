@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import CreateItem from './pages/CreateItem';
+import Search from './pages/Search';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -31,6 +32,7 @@ const router = createBrowserRouter([
       { path: 'login', element: <Login /> },
       { path: 'register', element: <Register /> },
       { path: 'create-item', element: <CreateItem /> },
+      { path: 'search', element: <Search /> },
     ],
   },
 ]);
